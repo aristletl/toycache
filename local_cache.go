@@ -2,7 +2,6 @@ package toycache
 
 import (
 	"context"
-	"errors"
 	"github.com/aristletl/toycache/internal/errs"
 	"sync"
 	"time"
@@ -13,6 +12,25 @@ type LocalCache struct {
 	sync.RWMutex
 }
 
+func NewLocalCache() *LocalCache {
+	c := &LocalCache{
+		data: make(map[string]item),
+	}
+
+	go func() {
+		timer := time.NewTicker(10*time.Second)
+		for {
+			select {
+			case <- timer.C:
+			case <-:
+				
+			}
+		}
+	}()
+
+	return c
+}
+
 func (l *LocalCache) Get(ctx context.Context, key string) (any, error) {
 	l.RLock()
 	val, ok := l.data[key]
@@ -21,8 +39,19 @@ func (l *LocalCache) Get(ctx context.Context, key string) (any, error) {
 		return nil, errs.NewErrKeyNotFound(key)
 	}
 
-	if val.deadline.Before(time.Now()) {
-		return nil, errors.New("")
+	// double check
+	now := time.Now()
+	if val.deadline.Before(now) {
+		l.Lock()
+		defer l.Unlock()
+		val, ok = l.data[key]
+		if !ok {
+			return nil, errs.NewErrKeyNotFound(key)
+		}
+		if val.deadline.Before(now) {
+			delete(l.data, key)
+			return nil, errs.NewErrKeyNotFound(key)
+		}
 	}
 	return val.val, nil
 }
