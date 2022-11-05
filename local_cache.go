@@ -7,28 +7,58 @@ import (
 	"time"
 )
 
+type LocalCacheOption func(l *LocalCache)
+
 type LocalCache struct {
-	data map[string]item
 	sync.RWMutex
+	data      map[string]*item
+	close     chan struct{}
+	closeOnce sync.Once
+
+	onEvicted func(key string, val any)
 }
 
-func NewLocalCache() *LocalCache {
-	c := &LocalCache{
-		data: make(map[string]item),
+func NewLocalCache(opts ...LocalCacheOption) *LocalCache {
+	l := &LocalCache{
+		data:  make(map[string]*item),
+		close: make(chan struct{}, 1),
 	}
 
+	for _, opt := range opts {
+		opt(l)
+	}
+
+	timer := time.NewTicker(time.Second)
 	go func() {
-		timer := time.NewTicker(10*time.Second)
 		for {
 			select {
-			case <- timer.C:
-			case <-:
-				
+			case <-timer.C:
+				cnt := 0
+				l.Lock()
+				for k, v := range l.data {
+					if v.deadline.Before(time.Now()) {
+						l.delete(k, v.val)
+					}
+					cnt++
+					if cnt >= 1000 {
+						break
+					}
+				}
+				l.Unlock()
+			case <-l.close:
+				return
 			}
 		}
 	}()
 
-	return c
+	return l
+}
+
+func (l *LocalCache) delete(key string, val any) {
+	delete(l.data, key)
+	if l.onEvicted != nil {
+		l.onEvicted(key, val)
+	}
 }
 
 func (l *LocalCache) Get(ctx context.Context, key string) (any, error) {
@@ -49,7 +79,7 @@ func (l *LocalCache) Get(ctx context.Context, key string) (any, error) {
 			return nil, errs.NewErrKeyNotFound(key)
 		}
 		if val.deadline.Before(now) {
-			delete(l.data, key)
+			l.delete(key, val.val)
 			return nil, errs.NewErrKeyNotFound(key)
 		}
 	}
@@ -57,13 +87,38 @@ func (l *LocalCache) Get(ctx context.Context, key string) (any, error) {
 }
 
 func (l *LocalCache) Set(ctx context.Context, key string, val any, expiration time.Duration) error {
-	//TODO implement me
-	panic("implement me")
+	l.Lock()
+	defer l.Unlock()
+	l.data[key] = &item{
+		val:      val,
+		deadline: time.Now().Add(expiration),
+	}
+	return nil
 }
 
 func (l *LocalCache) Delete(ctx context.Context, key string) error {
-	//TODO implement me
-	panic("implement me")
+	l.Lock()
+	defer l.Unlock()
+	val, ok := l.data[key]
+	if !ok {
+		return nil
+	}
+	l.delete(key, val.val)
+	return nil
+}
+
+func (l *LocalCache) Close() error {
+	l.closeOnce.Do(func() {
+		l.close <- struct{}{}
+		close(l.close)
+	})
+	return nil
+}
+
+func WithOnEvicted(fn func(key string, val any)) LocalCacheOption {
+	return func(l *LocalCache) {
+		l.onEvicted = fn
+	}
 }
 
 type item struct {
