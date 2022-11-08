@@ -1,7 +1,11 @@
 package errs
 
-import "fmt"
+import (
+	"errors"
+)
 
-func NewErrKeyNotFound(key string) error {
-	return fmt.Errorf("cache: 找不到key：%s", key)
-}
+var (
+	ErrKeyNotFound = errors.New("cache: 找不到key")
+
+	ErrLockNotHold = errors.New("redis-lock: 未占用锁")
+)
