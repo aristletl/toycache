@@ -2,32 +2,29 @@ package toycache
 
 import (
 	"context"
-	lru "github.com/hashicorp/golang-lru"
 	"log"
-	"sync"
 	"sync/atomic"
 	"time"
 )
 
 type MaxMemoryCache struct {
 	Cache
-	sync.Locker
-	max  int64
-	used int64
-	lru  *lru.Cache
+	max         int64
+	safeLine    int64
+	used        int64
+	elimination EliminateStrategy
 }
 
-func NewMaxMemoryCache(max int64, cache Cache) *MaxMemoryCache {
+func NewMaxMemoryCache(max, safeLine int64, e EliminateStrategy, cache Cache) *MaxMemoryCache {
 	res := &MaxMemoryCache{
-		max:   max,
-		Cache: cache,
+		max:         max,
+		safeLine:    safeLine,
+		Cache:       cache,
+		elimination: e,
 	}
-
-	l, _ := lru.New(int(max))
-	res.lru = l
 	res.Cache.OnEvicted(func(key string, val []byte) {
 		// 注册回调
-		ok := l.Remove(key)
+		ok := res.elimination.Remove(key)
 		if ok {
 			atomic.AddInt64(&res.used, -int64(len(val)))
 		}
@@ -39,19 +36,21 @@ func (m *MaxMemoryCache) Set(ctx context.Context, key string, val []byte,
 	expiration time.Duration) error {
 	// 在这里判断内存使用量，以及腾出空间
 	valSize := int64(len(val))
-	for atomic.LoadInt64(&m.used)+valSize > m.max {
-		k, _, ok := m.lru.RemoveOldest()
-		if ok {
-			err := m.Delete(ctx, k.(string))
-			if err != nil {
-				return err
+	if atomic.LoadInt64(&m.used)+valSize > m.max {
+		for atomic.LoadInt64(&m.used)+valSize > m.safeLine {
+			k, _, ok := m.elimination.GetEliminatedKey()
+			if ok {
+				err := m.Delete(ctx, k.(string))
+				if err != nil {
+					return err
+				}
+			} else {
+				log.Println("无法移除")
+				break
 			}
-		} else {
-			log.Println("无法移除")
-			break
 		}
 	}
-	m.lru.Add(key, valSize)
+	m.elimination.Add(key, valSize)
 	atomic.AddInt64(&m.used, valSize)
 	return m.Cache.Set(ctx, key, val, expiration)
 }

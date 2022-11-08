@@ -35,19 +35,14 @@ func NewClient(cmd redis.Cmdable) *Client {
 	}
 }
 
+// Lock 重试策略加锁
 func (c *Client) Lock(ctx context.Context, key string, expiration time.Duration, retry RetryStrategy) (*Lock, error) {
 	val := uuid.New().String()
 
 	for {
 		res, err := c.client.Eval(ctx, lock, []string{key}, val, expiration.Seconds()).Result()
 		if res == "OK" {
-			return &Lock{
-				client:     c.client,
-				value:      val,
-				key:        key,
-				expiration: expiration,
-				unlock:     make(chan struct{}),
-			}, nil
+			return newLock(c.client, key, val, expiration), nil
 		}
 		if err == context.DeadlineExceeded && retry != nil {
 			interval, ok := retry.Next()
@@ -73,12 +68,7 @@ func (c *Client) TryLock(ctx context.Context, key string, expiration time.Durati
 	if !ok {
 		return nil, errs.ErrFailedToPreemptLock
 	}
-	return &Lock{
-		client:     c.client,
-		value:      val,
-		key:        key,
-		expiration: expiration,
-	}, nil
+	return newLock(c.client, key, val, expiration), nil
 }
 
 type Lock struct {
@@ -89,6 +79,16 @@ type Lock struct {
 
 	unlock     chan struct{}
 	unlockOnce sync.Once
+}
+
+func newLock(client redis.Cmdable, key, val string, expiration time.Duration) *Lock {
+	return &Lock{
+		client:     client,
+		key:        key,
+		value:      val,
+		expiration: expiration,
+		unlock:     make(chan struct{}),
+	}
 }
 
 func (l *Lock) UnLock(ctx context.Context) error {

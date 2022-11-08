@@ -5,7 +5,9 @@ import (
 )
 
 var (
-	ErrKeyNotFound = errors.New("cache: 找不到key")
+	ErrKeyNotFound    = errors.New("cache: 找不到key")
+	ErrFailedToSetKey = errors.New("cache: 设置失败")
+	ErrFailedToDelKey = errors.New("cache: 删除失败")
 )
 
 var (

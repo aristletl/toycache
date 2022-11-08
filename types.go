@@ -15,6 +15,16 @@ type Cache interface {
 	Get(ctx context.Context, key string) (any, error)
 	Set(ctx context.Context, key string, val any, expiration time.Duration) error
 	Delete(ctx context.Context, key string) error
+	OnEvicted(func(key string, val []byte))
+}
+
+type EliminateStrategy interface {
+	// GetOldest 获取应该被淘汰的key
+	GetEliminatedKey() (any, AnyValue, bool)
+	// Add 添加一个key
+	Add(key any, args ...any)
+
+	Remove(key any) bool
 }
 
 type AnyValue struct {
