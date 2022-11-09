@@ -9,6 +9,27 @@ type LRU struct {
 	cache map[any]*node
 }
 
+func NewLRU() *LRU {
+	head, tail := new(node), new(node)
+	head.next = tail
+	tail.pre = head
+	return &LRU{
+		head:  head,
+		tail:  tail,
+		cache: make(map[any]*node),
+	}
+}
+
+func (l *LRU) Get(key any) (AnyValue, bool) {
+	l.RLock()
+	val, ok := l.cache[key]
+	l.RUnlock()
+	if !ok {
+		return AnyValue{}, false
+	}
+	return AnyValue{Val: val.value}, true
+}
+
 func (l *LRU) GetEliminatedKey() (any, AnyValue, bool) {
 	if len(l.cache) == 0 {
 		return nil, AnyValue{}, false
@@ -17,13 +38,16 @@ func (l *LRU) GetEliminatedKey() (any, AnyValue, bool) {
 	l.RLock()
 	res := l.tail.pre
 	l.RUnlock()
-	return res.key, res.value, true
+	return res.key, AnyValue{Val: res.value}, true
 }
 
 func (l *LRU) Add(key any, args ...any) {
-	val := AnyValue{}
+	if key == nil {
+		return
+	}
+	var val any
 	if len(args) != 0 {
-		val.Val = args[0]
+		val = args[0]
 	}
 
 	l.Lock()
@@ -59,7 +83,7 @@ func (l *LRU) Remove(key any) bool {
 
 type node struct {
 	key   any
-	value AnyValue
+	value any
 	pre   *node
 	next  *node
 }

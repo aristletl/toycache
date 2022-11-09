@@ -25,6 +25,8 @@ type EliminateStrategy interface {
 	Add(key any, args ...any)
 
 	Remove(key any) bool
+
+	Get(key any) (AnyValue, bool)
 }
 
 type AnyValue struct {
@@ -41,4 +43,15 @@ func (a AnyValue) String() (string, error) {
 		return "", errors.New("无法转换的类型")
 	}
 	return str, nil
+}
+
+func (a AnyValue) Int64() (int64, error) {
+	if a.Err != nil {
+		return 0, a.Err
+	}
+	res, ok := a.Val.(int64)
+	if !ok {
+		return -1, errors.New("无法转换的类型")
+	}
+	return res, nil
 }
