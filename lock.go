@@ -3,6 +3,7 @@ package toycache
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"github.com/aristletl/toycache/internal/errs"
 	"github.com/go-redis/redis/v9"
 	"github.com/google/uuid"
@@ -36,21 +37,31 @@ func NewClient(cmd redis.Cmdable) *Client {
 }
 
 // Lock 重试策略加锁
-func (c *Client) Lock(ctx context.Context, key string, expiration time.Duration, retry RetryStrategy) (*Lock, error) {
+func (c *Client) Lock(ctx context.Context, key string, timeout,
+	expiration time.Duration, retry RetryStrategy) (*Lock, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	val := uuid.New().String()
 
 	for {
-		res, err := c.client.Eval(ctx, lock, []string{key}, val, expiration.Seconds()).Result()
+		lCtx, cancel := context.WithTimeout(ctx, timeout)
+		res, err := c.client.Eval(lCtx, lock, []string{key}, val, expiration.Seconds()).Result()
+		cancel()
 		if res == "OK" {
 			return newLock(c.client, key, val, expiration), nil
 		}
-		if err == context.DeadlineExceeded && retry != nil {
+		if errors.Is(err, context.DeadlineExceeded) && retry != nil {
 			interval, ok := retry.Next()
 			if !ok {
 				return nil, errs.ErrFailedToPreemptLock
 			}
-			time.Sleep(interval)
-			continue
+			select {
+			case <-ctx.Done():
+				return nil, lCtx.Err()
+			case <-time.After(interval):
+				continue
+			}
 		}
 		if err != nil {
 			return nil, err

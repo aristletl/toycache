@@ -18,6 +18,10 @@ type LocalCache struct {
 	onEvicted func(key string, val any)
 }
 
+func (l *LocalCache) OnEvicted(fn func(key string, val []byte)) {
+	panic("implement me")
+}
+
 func NewLocalCache(opts ...LocalCacheOption) *LocalCache {
 	l := &LocalCache{
 		data:  make(map[string]*item),
@@ -66,7 +70,7 @@ func (l *LocalCache) Get(ctx context.Context, key string) (any, error) {
 	val, ok := l.data[key]
 	l.RUnlock()
 	if !ok {
-		return nil, errs.NewErrKeyNotFound(key)
+		return nil, errs.ErrKeyNotFound
 	}
 
 	// double check
@@ -76,11 +80,11 @@ func (l *LocalCache) Get(ctx context.Context, key string) (any, error) {
 		defer l.Unlock()
 		val, ok = l.data[key]
 		if !ok {
-			return nil, errs.NewErrKeyNotFound(key)
+			return nil, errs.ErrKeyNotFound
 		}
 		if val.deadline.Before(now) {
 			l.delete(key, val.val)
-			return nil, errs.NewErrKeyNotFound(key)
+			return nil, errs.ErrKeyNotFound
 		}
 	}
 	return val.val, nil

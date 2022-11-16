@@ -143,15 +143,31 @@ func TestLRU_Remove(t *testing.T) {
 		wantList *node
 	}{
 		{
-			name:    "删除不存在的值",
-			cache:   NewLRU(),
-			key:     1,
+			name: "删除不存在的值",
+			cache: func() *LRU {
+				l := NewLRU()
+				l.Add(1, 1)
+				return l
+			}(),
+			key:     3,
 			wantRes: true,
+			wantList: &node{
+				key:   1,
+				value: 1,
+			},
 		},
 		{
-			name:    "key 为 nil",
-			cache:   NewLRU(),
+			name: "key 为 nil",
+			cache: func() *LRU {
+				l := NewLRU()
+				l.Add(1, 1)
+				return l
+			}(),
 			wantRes: true,
+			wantList: &node{
+				key:   1,
+				value: 1,
+			},
 		},
 		{
 			name: "",
@@ -162,6 +178,7 @@ func TestLRU_Remove(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			res := tc.cache.Remove(tc.key)
 			assert.Equal(t, tc.wantRes, res)
+			listEqual(t, tc.wantList, tc.cache.head.next)
 		})
 	}
 }

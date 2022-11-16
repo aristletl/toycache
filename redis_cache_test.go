@@ -14,7 +14,7 @@ func TestRedisCache_Set(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	testCase := []struct {
 		name       string
-		cmd        func() redis.Cmdable
+		cmd        redis.Cmdable
 		key        string
 		val        any
 		expiration time.Duration
@@ -29,7 +29,7 @@ func TestRedisCache_Set(t *testing.T) {
 				res.EXPECT().Set(gomock.Any(), "key", "value", time.Minute).
 					Return(cmd)
 				return res
-			},
+			}(),
 			key:        "key",
 			val:        "value",
 			expiration: time.Minute,
@@ -38,7 +38,7 @@ func TestRedisCache_Set(t *testing.T) {
 
 	for _, tc := range testCase {
 		t.Run(tc.name, func(t *testing.T) {
-			client := NewRedisCache(tc.cmd())
+			client := NewRedisCache(tc.cmd)
 			err := client.Set(context.Background(), tc.key, tc.val, tc.expiration)
 			assert.Equal(t, tc.wantErr, err)
 		})
